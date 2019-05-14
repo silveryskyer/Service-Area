@@ -1,0 +1,94 @@
+# 数据读取
+import geopandas
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+n_path = 'data/nodes.shp' 
+node_shp_df = geopandas.GeoDataFrame.from_file(n_path) #读取nodes.shp数据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+e_path = 'data/edges.shp'
+edge_shp_df = geopandas.GeoDataFrame.from_file(e_path) #读取edges.shp数据
+
+from shapely.geometry import Point, Polygon
+import numpy as np
+
+#服务区中心点
+centerpoint = Point(-117.070381, 32.733253)
+servicePoint = node_shp_df[node_shp_df['geometry']==centerpoint]
+servicePointId = np.array(servicePoint).tolist()[0][1]
+scope = 3000  #最大服务范围
+#利用迭代求服务区
+def findService(servicePointId,length,outpoint):
+    servicePoint = node_shp_df[node_shp_df['osmid']==servicePointId]
+    x0 = np.array(servicePoint['geometry'].x).tolist()[0]
+    y0 = np.array(servicePoint['geometry'].y).tolist()[0]
+    dis0 = (x0-centerpoint.x)**2 + (y0-centerpoint.y)**2 
+    serviceIndex = servicePoint.index.tolist()[0]
+    visited[serviceIndex] = 1
+    out = outpoint
+    road = edge_shp_df[edge_shp_df['from']==servicePointId]
+    nextPoint = node_shp_df[(node_shp_df['osmid'].isin(road['to']))]
+    road2 = edge_shp_df[(edge_shp_df['to']==servicePointId) & (edge_shp_df['oneway']=='False')]
+    nextPoint2 = node_shp_df[node_shp_df['osmid'].isin(road2['from'])]
+    road = road.append(road2)
+    nextPoint = nextPoint.append(nextPoint2)
+    #print('next:')
+    #print(nextPoint)
+    for c,p,pp,r,l in zip(nextPoint['geometry'],nextPoint['osmid'],nextPoint.index,road,road['length']):
+        xi = c.x
+        yi = c.y
+        disi = (xi-centerpoint.x)**2 + (yi-centerpoint.y)**2 
+        #若不是远离服务中心方向，则跳出循环
+        if disi<dis0:
+            continue
+        pointId = p
+        nextlength = length + float(l)
+        #若已访问过该节点，则跳出循环
+        if visited[pp] == 1:
+            continue
+        #若总长度大于最大服务距离，则记录前一个节点
+        if nextlength > scope:
+            out.append(str(servicePointId))
+            continue
+        #计算下一个节点
+        findService(pointId,nextlength,out)
+    return out
+#调用函数求出服务区边界点    
+visited = [0]*node_shp_df.shape[0]
+out = []
+outPoint = findService(servicePointId,0,out)
+#根据边界点求出服务区边界点坐标
+outpoint1K = []
+for element in outPoint :
+    point = node_shp_df[node_shp_df['osmid']==element]
+    x = point['geometry'].x.tolist()[0]
+    y = point['geometry'].y.tolist()[0]
+    if([y,x] not in outpoint1K):
+        outpoint1K.append([y,x])
+outpoint1K
+
+#该方法求出的服务区边界坐标未按顺序排列，所以需要用一个凸包算法来求出首尾连接的服务区边界
+#首先求出每个点相对于服务中心的极角
+def PointCmp(point,pointcenter):
+    a = point[0]-pointcenter[0]
+    b = point[1]-pointcenter[1]
+    angle = 0
+    if a>0 and b>0:
+        angle = math.atan(b/a)*180/math.pi
+    elif a<0 and b>0:
+        angle = 180 + math.atan(b/a)*180/math.pi
+    elif a<0 and b<0:
+        angle = 180 + math.atan(b/a)*180/math.pi
+    elif a>0 and b<0:
+        angle = 360 + math.atan(b/a)*180/math.pi
+    return angle
+center = [32.733253, -117.054108]
+n = len(outpoint3K)
+point = outpoint3K
+#冒泡排序
+for i in range(n):
+    for j in range(n-i-1):
+        if PointCmp(point[j],center)<PointCmp(point[j+1],center):
+            tmp = point[j]
+            point[j] = point[j+1]
+            point[j+1] = tmp
+point
